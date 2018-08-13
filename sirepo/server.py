@@ -10,6 +10,7 @@ from pykern import pkconfig
 from pykern import pkio
 from pykern.pkdebug import pkdc, pkdexc, pkdlog, pkdp
 from sirepo import feature_config
+from sirepo import cookie
 from sirepo import runner
 from sirepo import simulation_db
 from sirepo import util
@@ -34,17 +35,8 @@ import werkzeug.exceptions
 if any(k in feature_config.cfg.sim_types for k in ('rs4pi', 'warppba', 'warpvnd')):
     import h5py
 
-#: where users live under db_dir
-_BEAKER_DATA_DIR = 'beaker'
-
-#: where users live under db_dir
-_BEAKER_LOCK_DIR = 'lock'
-
 #: Relative to current directory only in test mode
 _DEFAULT_DB_SUBDIR = 'run'
-
-#: What's the key in environ for the session
-_ENVIRON_KEY_BEAKER = 'beaker.session'
 
 #: Cache for _json_response_ok
 _JSON_RESPONSE_OK = None
@@ -712,8 +704,8 @@ def init(db_dir=None, uwsgi=None):
         db_dir = cfg.db_dir
     uri_router.init(app, sys.modules[__name__], simulation_db)
     global _wsgi_app
-    _wsgi_app = _WSGIApp(app, uwsgi)
-    _BeakerSession().sirepo_init_app(app, db_dir)
+    _wsgi_app = app.wsgi_app
+    app.sirepo_db_dir = db_dir
     simulation_db.init_by_server(app, sys.modules[__name__])
     for err, file in simulation_db.SCHEMA_COMMON['customErrors'].items():
         app.register_error_handler(int(err), _handle_error)
@@ -729,6 +721,7 @@ def javascript_redirect(redirect_uri):
         redirect_uri=redirect_uri
     )
 
+_cookie = None
 
 def session_user(*args, **kwargs):
     """Get/set the user from the Flask session
@@ -737,95 +730,20 @@ def session_user(*args, **kwargs):
 
     Args:
         user (str): if args[0], will set the user; else gets
-        checked (bool): if kwargs['checked'], assert the user is truthy
-        environ (dict): session environment to use instead of `flask.session`
+        checked (bool): if kwargs['checked'], assert the user is truthy -- defaults
+            to True
 
     Returns:
         str: user id
     """
-    environ = kwargs.get('environ', None)
-    session = environ.get(_ENVIRON_KEY_BEAKER) if environ else flask.session
+    global _cookie
+    _cookie = _cookie or cookie.Cookie()
     if args:
-        session[_SESSION_KEY_USER] = args[0]
-        _wsgi_app.set_log_user(args[0])
-    res = session.get(_SESSION_KEY_USER)
+        _cookie.init_user(args[0])
+    res = _cookie.user
     if not res and kwargs.get('checked', True):
-        raise KeyError(_SESSION_KEY_USER)
+        raise ValueError('User not found and cookie not created.')
     return res
-
-
-class _BeakerSession(flask.sessions.SessionInterface):
-    """Session manager for Flask using Beaker.
-
-    Stores session info in files in sirepo.server.data_dir. Minimal info kept
-    in session.
-    """
-    def __init__(self, app=None):
-        if app is None:
-            self.app = None
-        else:
-            self.init_app(app)
-
-    def sirepo_init_app(self, app, db_dir):
-        """Initialize cfg with db_dir and register self with Flask
-
-        Args:
-            app (flask): Flask application object
-            db_dir (py.path.local): db_dir passed on command line
-        """
-        app.sirepo_db_dir = db_dir
-        data_dir = db_dir.join(_BEAKER_DATA_DIR)
-        lock_dir = data_dir.join(_BEAKER_LOCK_DIR)
-        pkio.mkdir_parent(lock_dir)
-        sc = {
-            'session.auto': True,
-            'session.cookie_expires': False,
-            'session.type': 'file',
-            'session.data_dir': str(data_dir),
-            'session.lock_dir': str(lock_dir),
-        }
-        #TODO(robnagler) Generalize? seems like we'll be shadowing lots of config
-        for k in cfg.beaker_session:
-            sc['session.' + k] = cfg.beaker_session[k]
-        app.wsgi_app = beaker.middleware.SessionMiddleware(app.wsgi_app, sc)
-        app.session_interface = self
-
-    def open_session(self, app, request):
-        """Called by flask to create the session"""
-        return request.environ[_ENVIRON_KEY_BEAKER]
-
-    def save_session(self, *args, **kwargs):
-        """Necessary to complete abstraction, but Beaker autosaves"""
-        pass
-
-
-class _WSGIApp(object):
-    """Wraps Flask's wsgi_app for logging
-
-    Args:
-        app (Flask.app): Flask application being wrapped
-        uwsgi (module): `uwsgi` module passed from ``uwsgi.py.jinja``
-    """
-    def __init__(self, app, uwsgi):
-        self.app = app
-        # Is None if called from sirepo.pkcli.service.http or FlaskClient
-        self.uwsgi = uwsgi
-        self.wsgi_app = app.wsgi_app
-        app.wsgi_app = self
-
-    def set_log_user(self, user):
-        if self.uwsgi:
-            log_user = 'li-' + user if user else '-'
-            # Only works for uWSGI (service.uwsgi). For service.http,
-            # werkzeug.serving.WSGIRequestHandler.log hardwires '%s - - [%s] %s\n',
-            # and no point in overriding, since just for development.
-            self.uwsgi.set_logvar(_UWSGI_LOG_KEY_USER, log_user)
-
-    def __call__(self, environ, start_response):
-        """An "app" called by uwsgi with requests.
-        """
-        self.set_log_user(session_user(checked=False, environ=environ))
-        return self.wsgi_app(environ, start_response)
 
 
 def _as_attachment(response, content_type, filename):

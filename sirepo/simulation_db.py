@@ -1170,14 +1170,12 @@ def _user_dir():
     """
     try:
         uid = _server.session_user()
-    except KeyError:
+    except (ValueError, KeyError):
         uid = _user_dir_create()
     d = user_dir_name(uid)
     if d.check():
         return d
-    # Beaker session might have been deleted (in dev) so "logout" and "login"
-    uid = _user_dir_create()
-    return user_dir_name(uid)
+    raise RuntimeError(util_err(d, 'directory {} does not exist', d))
 
 
 def _user_dir_create():
