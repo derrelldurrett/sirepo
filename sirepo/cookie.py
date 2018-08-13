@@ -68,7 +68,7 @@ class _State(pkcollections.Dict):
 
     def set_response(self, resp):
         if self._changed:
-            resp.set_cookie(cfg.key, self.uid or '')
+            resp.set_cookie(cfg.key, self.uid or '', max_age=_COOKIE_EXPIRY_TIME)
 
 
     def _set(self, **kwargs):
