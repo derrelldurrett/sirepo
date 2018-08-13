@@ -22,38 +22,80 @@ The basic idea:
 """
 from __future__ import absolute_import, division, print_function
 import flask
+from pykern import pkconfig
+from pykern import pkcollections
 
 from pykern.pkdebug import pkdc, pkdexc, pkdlog, pkdp
 
-# Dict key for referencing cookie UIDs
-_COOKIE_USER_KEY = 'uid'
 
 # Session key in Flask on the request:
 _HTTP_COOKIE_KEY = 'HTTP_COOKIE'
 
-class Cookie:
+# A really long time
+_COOKIE_EXPIRY_TIME = 10 * 365 * 24 * 3600
+
+def get_user():
+    """Get the user from the Flask session
+    """
+    if not 'sirepo_cookie' in flask.g:
+        flask.g.sirepo_cookie = _State()
+    return flask.g.sirepo_cookie.uid
+
+
+def clear_user():
+    set_user(None)
+
+
+def set_user(uid):
+    flask.g.sirepo_cookie._set(uid=uid)
+
+
+def set_cookie(resp):
+    if 'sirepo_cookie' in flask.g:
+       flask.g.sirepo_cookie.set_response(resp)
+    return resp
+
+
+class _State(pkcollections.Dict):
     """Container for the current session's cookies. Primarily concerned with making
     sure a uid lives on the cookie, and whether or not the related user
     """
     def __init__(self):
-        self._cookies = self._as_dict(flask.request.environ.get(_HTTP_COOKIE_KEY))
-        # I'm pretty sure this will break some way or another I haven't thought about.
-        self.user = self._cookies.get(_COOKIE_USER_KEY)
+        cookies = self._as_dict(flask.request.environ.get(_HTTP_COOKIE_KEY))
+        self._changed = False
+        self.uid = cookies.get(cfg.key) or None
 
 
-    def init_user(self, *args):
-        if args:
-            _uid = args[0]
-            self.user = _uid
-            self._cookies[_COOKIE_USER_KEY] = _uid
-        return self.user
+    def set_response(self, resp):
+        if self._changed:
+            resp.set_cookie(cfg.key, self.uid or '')
+
+
+    def _set(self, **kwargs):
+        self.update(_changed=True, **kwargs)
 
 
     def _as_dict(self, formatted_str):
         """Helper function to turn a cookie-formatted string ('name1=value1;name2=value2')
         into a dict. The names become keys in the dict."""
         cookie_as_dict = {}
-        for _bit in formatted_str.split(';'):
-            _bits = _bit.split('=')
-            cookie_as_dict[_bits[0]] = _bits[1]
+        for b in formatted_str.split(';'):
+            bs = b.split('=')
+            cookie_as_dict[bs[0].strip()] = bs[1]
         return cookie_as_dict
+
+
+@pkconfig.parse_none
+def _cfg_secret(value):
+    """Reads file specified as config value"""
+    if not value:
+        return 'dev dummy secret'
+    with open(value) as f:
+        return f.read()
+
+
+cfg = pkconfig.init(
+    key=('sr_' + pkconfig.cfg.channel, str, 'Name of the cookie key used to save the session under'),
+    secret=(None, _cfg_secret, 'Used to encrypt cookie'),
+    secure=(not pkconfig.channel_in('dev'), bool, 'Whether or not the session cookie should be marked as secure'),
+)

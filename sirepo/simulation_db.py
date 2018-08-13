@@ -11,6 +11,7 @@ from pykern import pkinspect
 from pykern import pkio
 from pykern import pkresource
 from pykern.pkdebug import pkdc, pkdexc, pkdlog, pkdp
+from sirepo import cookie
 from sirepo import feature_config
 from sirepo.template import template_common
 from sirepo import util
@@ -388,8 +389,10 @@ def job_id(data):
     Returns:
         str: unique name
     """
+    uid = cookie.get_user()
+    assert uid
     return '{}-{}-{}'.format(
-        _server.session_user(),
+        uid,
         data['simulationId'],
         data['report'],
     )
@@ -434,7 +437,8 @@ def lib_dir_from_sim_dir(sim_dir):
 def move_user_simulations(to_uid):
     """Moves all non-example simulations for the current session into the target user's dir.
     """
-    from_uid = _server.session_user()
+    from_uid = cookie.get_user()
+    assert from_uid
     with _global_lock:
         for path in glob.glob(
                 str(user_dir_name(from_uid).join('*', '*', SIMULATION_DATA_FILE)),
@@ -1168,9 +1172,8 @@ def _user_dir():
     Returns:
         str: unique id for user from flask session
     """
-    try:
-        uid = _server.session_user()
-    except (ValueError, KeyError):
+    uid = cookie.get_user()
+    if not uid:
         uid = _user_dir_create()
     d = user_dir_name(uid)
     if d.check():
@@ -1186,7 +1189,7 @@ def _user_dir_create():
     """
     uid = _random_id(user_dir_name())['id']
     # Must set before calling simulation_dir
-    _server.session_user(uid)
+    cookie.set_user(uid)
     for simulation_type in feature_config.cfg.sim_types:
         _create_example_and_lib_files(simulation_type)
     return uid

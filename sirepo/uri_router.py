@@ -8,6 +8,8 @@ from __future__ import absolute_import, division, print_function
 from pykern import pkcollections
 from pykern.pkdebug import pkdc, pkdexc, pkdlog, pkdp
 from sirepo import util
+from sirepo import cookie
+import flask
 import re
 
 #: route for sirepo.sr_unit
@@ -162,7 +164,7 @@ def _dispatch(path):
     import werkzeug.exceptions
     try:
         if path is None:
-            return _empty_route.func()
+            return _response(_empty_route.func())
         parts = path.split('/')
         try:
             route = _uri_to_route[parts[0]]
@@ -178,7 +180,7 @@ def _dispatch(path):
             kwargs[p.name] = parts.pop(0)
         if parts:
             raise NotFound('{}: unknown parameters in uri ({})', parts, path)
-        return route.func(**kwargs)
+        return _response(route.func(**kwargs))
     except NotFound as e:
         #TODO(robnagler) cascade calling context
         pkdlog(e.log_fmt, *e.args, **e.kwargs)
@@ -186,6 +188,11 @@ def _dispatch(path):
     except Exception as e:
         pkdlog('{}: error: {}', path, pkdexc())
         raise
+
+
+def _response(*args, **kwargs):
+    r = flask.make_response(*args, **kwargs)
+    return cookie.set_cookie(r)
 
 
 def _dispatch_empty():

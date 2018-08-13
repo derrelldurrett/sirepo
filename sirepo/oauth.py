@@ -9,6 +9,7 @@ from __future__ import absolute_import, division, print_function
 from flask_sqlalchemy import SQLAlchemy
 from pykern import pkconfig, pkcollections
 from pykern.pkdebug import pkdc, pkdexc, pkdlog, pkdp
+from sirepo import cookie
 from sirepo import server
 from sirepo import simulation_db
 import flask
@@ -47,7 +48,7 @@ def authorize(simulation_type, app, oauth_type):
     oauth_next = '/{}#{}'.format(simulation_type, flask.request.args.get('next') or '')
     if oauth_type == _ANONYMOUS:
         _update_session(_ANONYMOUS)
-        server.clear_session_user()
+        cookie.clear_user()
         return server.javascript_redirect(oauth_next)
     state = werkzeug.security.gen_salt(64)
     flask.session['oauth_nonce'] = state
@@ -89,7 +90,7 @@ def logout(simulation_type):
     """Sets the login_state to logged_out and clears the user session.
     """
     _update_session(_LOGGED_OUT)
-    server.clear_session_user()
+    cookie.clear_user()
     return flask.redirect('/{}'.format(simulation_type))
 
 
@@ -156,19 +157,19 @@ def _remove_session_key(name):
 def _update_database(user_data, oauth_type):
     with _db_serial_lock:
         user = User.query.filter_by(oauth_id=user_data['id'], oauth_type=oauth_type).first()
-        session_uid = server.session_user(checked=False)
+        cookie_uid = cookie.get_user()
         if user:
-            if session_uid and session_uid != user.uid:
+            if cookie_uid and cookie_uid != user.uid:
                 simulation_db.move_user_simulations(user.uid)
             user.user_name = user_data['login']
             user.display_name = user_data['name']
-            server.session_user(user.uid)
+            cookie.set_user(user.uid)
         else:
-            if not session_uid:
+            if not cookie_uid:
                 # ensures the user session (uid) is ready if new user logs in from logged-out session
                 pkdlog('creating new session for user: {}', user_data['id'])
                 simulation_db.simulation_dir('')
-            user = User(server.session_user(), user_data['login'], user_data['name'], oauth_type, user_data['id'])
+            user = User(cookie.get_user(), user_data['login'], user_data['name'], oauth_type, user_data['id'])
         _db.session.add(user)
         _db.session.commit()
         return user

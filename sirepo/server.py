@@ -687,13 +687,6 @@ def all_uids():
     return oauth.all_uids(app)
 
 
-def clear_session_user():
-    """Remove the current user from the flask session.
-    """
-    if _SESSION_KEY_USER in flask.session:
-        del flask.session[_SESSION_KEY_USER]
-
-
 def init(db_dir=None, uwsgi=None):
     """Initialize globals and populate simulation dir"""
     from sirepo import uri_router
@@ -720,30 +713,6 @@ def javascript_redirect(redirect_uri):
         'html/javascript-redirect.html',
         redirect_uri=redirect_uri
     )
-
-_cookie = None
-
-def session_user(*args, **kwargs):
-    """Get/set the user from the Flask session
-
-    With no positional arguments, is a getter. Else a setter.
-
-    Args:
-        user (str): if args[0], will set the user; else gets
-        checked (bool): if kwargs['checked'], assert the user is truthy -- defaults
-            to True
-
-    Returns:
-        str: user id
-    """
-    global _cookie
-    _cookie = _cookie or cookie.Cookie()
-    if args:
-        _cookie.init_user(args[0])
-    res = _cookie.user
-    if not res and kwargs.get('checked', True):
-        raise ValueError('User not found and cookie not created.')
-    return res
 
 
 def _as_attachment(response, content_type, filename):
@@ -1100,11 +1069,6 @@ def static_dir(dir_name):
 
 
 cfg = pkconfig.init(
-    beaker_session=dict(
-        key=('sirepo_' + pkconfig.cfg.channel, str, 'Beaker: Name of the cookie key used to save the session under'),
-        secret=(None, _cfg_session_secret, 'Beaker: Used with the HMAC to ensure session integrity'),
-        secure=(False, bool, 'Beaker: Whether or not the session cookie should be marked as secure'),
-    ),
     db_dir=(None, _cfg_db_dir, 'where database resides'),
     job_queue=(None, str, 'DEPRECATED: set $SIREPO_RUNNER_JOB_CLASS'),
     oauth_login=(False, bool, 'OAUTH: enable login'),

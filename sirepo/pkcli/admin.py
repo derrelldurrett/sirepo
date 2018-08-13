@@ -13,6 +13,7 @@ def create_examples():
     """Adds missing app examples to all users.
     """
     from pykern import pkio
+    from sirepo import cookie
     from sirepo import feature_config
     from sirepo import server
     from sirepo import simulation_db
@@ -28,7 +29,7 @@ def create_examples():
         flask.session = {
             server._ENVIRON_KEY_BEAKER: {},
         }
-        server.session_user(uid)
+        cookie.set_user(uid)
         for sim_type in feature_config.cfg.sim_types:
             simulation_db.verify_app_directory(sim_type)
             names = map(

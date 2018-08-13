@@ -8,6 +8,7 @@ from __future__ import absolute_import, division, print_function
 from pykern import pkcollections
 from pykern import pkconfig
 from pykern.pkdebug import pkdp
+from sirepo import cookie
 from sirepo import util
 from sirepo import simulation_db
 import base64
@@ -100,7 +101,7 @@ def auth_login(req):
         sid,
         checked=True,
     )
-    server.session_user(simulation_db.uid_from_dir_name(path))
+    cookie.set_user(simulation_db.uid_from_dir_name(path))
 
 
 cfg = pkconfig.init(
