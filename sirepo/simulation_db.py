@@ -1172,14 +1172,15 @@ def _user_dir():
     Returns:
         str: unique id for user from flask session
     """
-    uid = cookie.get_user()
-    if not uid:
-        uid = _user_dir_create()
-    d = user_dir_name(uid)
-    if d.check():
-        return d
-    raise RuntimeError(util_err(d, 'directory {} does not exist', d))
-
+    if cookie.is_valid():
+        uid = cookie.get_user()
+        if not uid:
+            uid = _user_dir_create()
+        d = user_dir_name(uid)
+        if d.check():
+            return d
+        raise RuntimeError(util.err(d, 'directory {} does not exist', d))
+    raise RuntimeError(util.err('Invalid cookie trying to create user directory.'))
 
 def _user_dir_create():
     """Create a user and initialize the directory
