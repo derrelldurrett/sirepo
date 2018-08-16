@@ -1182,6 +1182,7 @@ def _user_dir():
         raise RuntimeError(util.err(d, 'directory {} does not exist', d))
     raise RuntimeError(util.err('Invalid cookie trying to create user directory.'))
 
+
 def _user_dir_create():
     """Create a user and initialize the directory
 
